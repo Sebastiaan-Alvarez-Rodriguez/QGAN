@@ -181,25 +181,44 @@ def train(circuit, paramlist):
 # Main Control
 ####################################
 
-def run_generator(plot=False):
-    circuit, qubits = construct_base_circuit()
-    ansatz = Ansatz()
-    circuit.append(ansatz.get_circuit(qubits))
-    params = ansatz.params
-    # print(circuit.to_text_diagram(transpose=True))
+# def run_generator(plot=False):
+#     # Training the QCBM.
+#     start_time = time()
+#     loss, params_final = train(circuit, params_init)
+#     end_time = time()
+#     print(end_time-start_time)
 
-    params_init = get_init_params(s.paramtype, 2*s.depth*s.num_qubits)
-    
-    # Training the QCBM.
-    start_time = time()
-    loss, params_final = train(circuit, params_init)
-    end_time = time()
-    print(end_time-start_time)
+#     if plot:
+#         plt.plot(get_real_data())
+#         plt.plot(estimate_probs(circuit, params_final))
+#         plt.plot(estimate_probs(circuit, params_final)) #Only different if we use n_shots > 0
+#         plt.legend(['Data', 'QCBM0','QCBM1'])
+#         plt.show()
+#     # return estimate_probs(circuit, params_final) for x in range(num_fakes)
 
-    if plot:
-        plt.plot(get_real_data())
-        plt.plot(estimate_probs(circuit, params_final))
-        plt.plot(estimate_probs(circuit, params_final)) #Only different if we use n_shots > 0
-        plt.legend(['Data', 'QCBM0','QCBM1'])
-        plt.show()
-    # return estimate_probs(circuit, params_final) for x in range(num_fakes)
+
+class Generator(object):
+    def __init__(self):
+        self.params = get_init_params(s.paramtype, 2*s.depth*s.num_qubits)
+        self.circuit, self.qubits = construct_base_circuit()
+        ansatz = Ansatz()
+        self.circuit.append(ansatz.get_circuit(self.qubits))
+
+
+    # Train this thing to become better at providing synthetic data
+    def train(self):
+        loss, params_final = train(self.circuit, self.params)
+        self.params = params_final
+        return loss, params_final
+
+
+    # Generate synthetic data, used to train discriminator
+    def gen_synthetics(self, amount):
+        if s.n_shots > 0:
+            return (estimate_probs(self.circuit, self.params) for x in range(amount))
+        else:
+            raise NotImplementedError('All same samples would be generated')
+
+
+    def print_circuit(self, transpose=True):
+        print(self.circuit.to_text_diagram(transpose=transpose))

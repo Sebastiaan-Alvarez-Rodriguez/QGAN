@@ -1,11 +1,23 @@
 import numpy as np 
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, accuracy_score
 from scipy.optimize import minimize
 from functools import partial
+from time import time
+from sympy import Symbol
+import cirq
 
 from src.settings import d_settings as s
-import cirq
+from src.enums.initparamtype import get_init_params
+
+
+####################################
+# Simulator generation
+####################################
+# Constructs a base simulator and required amount of qubits
+def construct_base_simulator():
+    qubits = [cirq.LineQubit(x) for x in range(s.num_qubits)]
+    simulator = cirq.Simulator()
+    return simulator, qubits
 
 
 ####################################
@@ -52,40 +64,17 @@ class Ansatz(object):
 
 
 ####################################
-# Simulator generation
-####################################
-
-# Constructs a base simulator and some qubits
-def construct_base_simulator():
-    qubits = [cirq.LineQubit(x) for x in range(s.num_qubits)]
-    simulator = cirq.Simulator()
-    return simulator, qubits
-
-
-# def pqc(qubits, params):
-#     for l in range(s.num_layers):
-#         yield (cirq.rx(params[(l+1)*j]).on(qubits[j]) for j in range(len(qubits)))
-#         yield (cirq.CZ(qubits[j],qubits[j+1]) for j in range(len(qubits)-1))
-
-
-# def qml_classifier_circuit(qubits, params, x_i):
-#     dp = data_preparation(qubits, x_i), 
-#     p = pqc(qubits, params)
-#     return cirq.Circuit(dp, p, cirq.measure(*qubits, key='x')) if s.n_shots > 0 else cirq.Circuit(dp, p)
-
-
-####################################
 # Measuring
 ####################################
-# Note, we measure chance of all 1's on all qubits below if s.n_shots > 0
-def run_circuit(simulator, qubits, params, datapoint):
+# Note, we measure chance of all 1's on all qubits below. Simulate if n_shots>0, compute final state otherwise
+def run_circuit(simulator, ansatz, qubits, params, datapoint):
     if s.n_shots > 0:
-        circuit = cirq.Circuit(qml_classifier_circuit(qubits, params, datapoint), cirq.measure(*qubits, key='x'))
+        circuit = cirq.Circuit(ansatz.get_circuit(qubits, datapoint), cirq.measure(*qubits, key='x'))
         results = simulator.run(circuit, repetitions=s.n_shots)
         counter_measurements = results.histogram(key='x')
         return float(counter_measurements[2**s.num_qubits-1]) / s.n_shots if 2**s.num_qubits-1 in counter_measurements.keys() else 0
     else:
-        circuit = cirq.Circuit(qml_classifier_circuit(qubits, params, datapoint))
+        circuit = cirq.Circuit(ansatz.get_circuit(qubits, datapoint))
         results = simulator.simulate(circuit)
         return abs(results.final_state[-1])
 
@@ -93,16 +82,13 @@ def run_circuit(simulator, qubits, params, datapoint):
 ####################################
 # Optimize
 ####################################
-def sweep_data(simulator, qubits, params, X):
-    probas = [run_circuit(simulator, qubits, params, X[i,:]) for i in range(X.shape[0])]
+def sweep_data(simulator, ansatz, qubits, params, data):
+    probas = [run_circuit(simulator, ansatz, qubits, params, data[i]) for i in range(data.shape[0])]
     return probas
 
-# will save by iterations the current cost, and accuracies
-tracking_cost = []
-def cost_to_optimize(simulator, qubits, data, labels, params):
-    cost = mean_squared_error(labels, sweep_data(simulator, qubits, params, data))
-    tracking_cost.append(cost)
-    return cost
+
+def cost_to_optimize(simulator, ansatz, qubits, data, labels, params):
+    return mean_squared_error(labels, sweep_data(simulator, ansatz, qubits, params, data))
 
 
 ####################################
@@ -111,30 +97,49 @@ def cost_to_optimize(simulator, qubits, data, labels, params):
 def predict(simulator, qubits, params, data):
     return np.array([1 if p > .5 else 0 for p in sweep_data(simulator, qubits, params, data)])
 
+
+####################################
+# Train
+####################################
+def train(simulator, ansatz, qubits, paramlist, data, labels, printing):
+    cto = partial(cost_to_optimize, simulator, ansatz, qubits, data, labels)
+
+    if printing:
+        print(f'Accuracy pre: {accuracy_score(labels, predict(simulator, qubits, paramlist, data))}')
+
+    start_time = time()
+    res = minimize(cto, paramlist, method="COBYLA", options={"maxiter":s.max_iter})
+    end_time = time()
+    if printing:
+        print(end_time-start_time)
+        print(f'Accuracy post: {accuracy_score(labels, predict(simulator, qubits, res.x, data))}')
+    return res.fun, res.x
+
+
 ####################################
 # Main Control
 ####################################
+# from sklearn.model_selection import train_test_split
+# data_train, data_test, labels_train, labels_test = train_test_split(data, labels, test_size=0.5, random_state=42, stratify=labels)
+class Discriminator(object):
+    def __init__(self):
+        # self.params = np.random.uniform(-2*np.pi, 2*np.pi, size=num_params) # Old circle stuff
+        self.params = get_init_params(s.paramtype, 2*s.depth*s.num_qubits)
+        self.simulator, self.qubits = construct_base_simulator()
+        self.ansatz = Ansatz()
 
-def run_discriminator(data, labels):
-    data_train, data_test, labels_train, labels_test = train_test_split(data, labels, test_size=0.5, random_state=42, stratify=labels)
 
-    simulator, qubits = construct_base_simulator()
-    num_params = s.num_qubits * s.num_layers
-    # Set a random seed
-    np.random.seed(42)
-    params_init = np.random.uniform(-2*np.pi, 2*np.pi, size=num_params)
-    run_circuit(simulator, qubits, params_init, data[0])
+    # Train discriminator to better learn difference between real and fake data
+    def train(self, data, labels, printing=False):
+        # Potential problem: Maybe there is no res.fun as loss
+        loss, params_final = train(self.simulator, self.ansatz, self.qubits, self.params, data, labels, printing)
+        self.params = params_final
+        return loss, params_final
 
-    cto = partial(cost_to_optimize, simulator, qubits, data_train, labels_train)
 
-    print(f'Accuracy pre (training): {accuracy_score(labels_train, predict(simulator, qubits, params_init, data_train))}')
-    print(f'Accuracy pre (testing):  {accuracy_score(labels_test, predict(simulator, qubits, params_init, data_test))}')
-
-    from time import time
-    start_time = time()
-    final_params = minimize(cto, params_init, method="COBYLA", options={"maxiter":s.max_iter})
-    end_time = time()
-    print(end_time-start_time)
-
-    print(f'Accuracy post (training): {accuracy_score(labels_train, predict(simulator, qubits, final_params.x, data_train))}')
-    print(f'Accuracy post (testing):  {accuracy_score(labels_test, predict(simulator, qubits, final_params.x, data_test))}')
+    # Run discriminator for val. Val can be 1 datapoint or a list of points (then a generator is returned lazily)
+    def run(self, val):
+        if isinstance(val, list):
+            return (run_circuit(self.simulator, self.ansatz, self.qubits, self.params, datapoint) for datapoint in val)
+        else:
+            return run_circuit(self.simulator, self.ansatz, self.qubits, self.params, val)
