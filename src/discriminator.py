@@ -7,82 +7,92 @@ from functools import partial
 from src.settings import d_settings as s
 import cirq
 
-####################################
-# Data generation
-####################################
-# Make a dataset of points inside and outside of a circle
-def circle(samples, center=[0.0, 0.0], radius=np.sqrt(2 / np.pi)):
-    Xvals, yvals = [], []
-
-    for i in range(samples):
-        x = 2 * (np.random.rand(2)) - 1
-        y = 0
-        if np.linalg.norm(x - center) < radius:
-            y = 1
-        Xvals.append(x)
-        yvals.append(y)
-    return np.array(Xvals), np.array(yvals)
-
-
-def obtain_data(samples=200):
-    X, Y = circle(samples)
-    data = np.empty((X.shape[0],X.shape[1]+1))
-    data[:,:2] = X
-    data[:,-1] = X[:,0]*X[:,1]
-    return data, Y
-
 
 ####################################
-# Circuit generation
+# Ansatz
 ####################################
-# Constructs a base circuit, with inputs set ready
+class Ansatz(object):
+    '''Class containing functions to generate circuit and parameters for ansatz'''
+    def __init__(self):
+        self.params = list(self.gen_params())
+
+    def gen_params(self):
+        return (Symbol(f'var_{x}') for x in range(2*s.depth*s.num_qubits))
+
+    # Return lazy layer of single qubit z rotations
+    def rot_z_layer(self, parameters):
+        return (cirq.rz(2*parameters[x])(cirq.LineQubit(x)) for x in range(s.num_qubits))
+
+    # Return lazy layer of single qubit y rotations
+    def rot_y_layer(self, parameters):
+        return (cirq.ry(parameters[x])(cirq.LineQubit(x)) for x in range(s.num_qubits))
+
+    # Return (1 item or) lazy Layer of entangling CZ(i,i+1 % num_qubits) gates
+    def entangling_layer(self):
+        if s.num_qubits == 1:
+            raise ValueError('A controlled-Z rotation needs at least 2 qubits')
+        return cirq.CZ(cirq.LineQubit(0), cirq.LineQubit(1)) if s.num_qubits == 2 else (cirq.CZ(cirq.LineQubit(x), cirq.LineQubit((x+1)%s.num_qubits)) for x in range(s.num_qubits))
+
+    # Generate gates required to embed datapoint into circuit
+    def data_preparation(qubits, datapoint):
+        # Old way: 8 qubits, each of 8 points sets x,y,z rotation on 1 line
+        yield (cirq.rx(val).on(qubits[idx]) for idx, val in enumerate(datapoint))
+        yield (cirq.ry(val).on(qubits[idx]) for idx, val in enumerate(datapoint))
+        yield (cirq.rz(val).on(qubits[idx]) for idx, val in enumerate(datapoint))
+
+    def get_circuit(self, qubits, datapoint):
+        for d in range(s.depth):
+            # Add datapoint
+            yield self.data_preparation(qubits, datapoint)
+            # Adding single qubit rotations
+            yield self.rot_z_layer(self.params[d*2*s.num_qubits : (d+1)*2*s.num_qubits : 2])
+            yield self.rot_y_layer(self.params[d*2*s.num_qubits+1 : (d+1)*2*s.num_qubits+1 : 2])
+            # Adding entangling layer
+            yield self.entangling_layer()
+
+
+####################################
+# Simulator generation
+####################################
+
+# Constructs a base simulator and some qubits
 def construct_base_simulator():
     qubits = [cirq.LineQubit(x) for x in range(s.num_qubits)]
     simulator = cirq.Simulator()
-    # circuit.append(get_initial_states(qubits))
     return simulator, qubits
 
 
-def data_preparation(qubits, x_i):
-    # input x_i as angles of RY operations
-    yield (cirq.rz(x_i[j]).on(qubits[j]) for j in range(len(x_i)))
-    yield (cirq.ry(x_i[j]).on(qubits[j]) for j in range(len(x_i)))
-    yield (cirq.rz(x_i[j]).on(qubits[j]) for j in range(len(x_i)))
+# def pqc(qubits, params):
+#     for l in range(s.num_layers):
+#         yield (cirq.rx(params[(l+1)*j]).on(qubits[j]) for j in range(len(qubits)))
+#         yield (cirq.CZ(qubits[j],qubits[j+1]) for j in range(len(qubits)-1))
 
 
-def pqc(qubits, params):
-    for l in range(s.num_layers):
-        yield (cirq.rx(params[(l+1)*j]).on(qubits[j]) for j in range(len(qubits)))
-        yield (cirq.CZ(qubits[j],qubits[j+1]) for j in range(len(qubits)-1))
-
-
-def qml_classifier_circuit(qubits, params, x_i):
-    dp = data_preparation(qubits, x_i), 
-    p = pqc(qubits, params)
-    return cirq.Circuit(dp, p, cirq.measure(*qubits, key='x')) if s.n_shots > 0 else cirq.Circuit(dp, p)
+# def qml_classifier_circuit(qubits, params, x_i):
+#     dp = data_preparation(qubits, x_i), 
+#     p = pqc(qubits, params)
+#     return cirq.Circuit(dp, p, cirq.measure(*qubits, key='x')) if s.n_shots > 0 else cirq.Circuit(dp, p)
 
 
 ####################################
 # Measuring
 ####################################
-def run_without_measurements(simulator, circuit):
-    results = simulator.simulate(circuit)
-    return abs(results.final_state[-1])
-
-def run_with_measurements(simulator, circuit):
-    results = simulator.run(circuit, repetitions=s.n_shots)
-    counter_measurements = results.histogram(key='x')
-    return float(counter_measurements[7]) / s.n_shots if 7 in counter_measurements.keys() else 0
-
+# Note, we measure chance of all 1's on all qubits below if s.n_shots > 0
 def run_circuit(simulator, qubits, params, datapoint):
-    circuit = qml_classifier_circuit(qubits, params, datapoint)
-    return run_with_measurements(simulator, circuit) if s.n_shots > 0 else run_without_measurements(simulator, circuit)
+    if s.n_shots > 0:
+        circuit = cirq.Circuit(qml_classifier_circuit(qubits, params, datapoint), cirq.measure(*qubits, key='x'))
+        results = simulator.run(circuit, repetitions=s.n_shots)
+        counter_measurements = results.histogram(key='x')
+        return float(counter_measurements[2**s.num_qubits-1]) / s.n_shots if 2**s.num_qubits-1 in counter_measurements.keys() else 0
+    else:
+        circuit = cirq.Circuit(qml_classifier_circuit(qubits, params, datapoint))
+        results = simulator.simulate(circuit)
+        return abs(results.final_state[-1])
 
 
 ####################################
 # Optimize
 ####################################
-
 def sweep_data(simulator, qubits, params, X):
     probas = [run_circuit(simulator, qubits, params, X[i,:]) for i in range(X.shape[0])]
     return probas
@@ -105,8 +115,7 @@ def predict(simulator, qubits, params, data):
 # Main Control
 ####################################
 
-def run_discriminator():
-    data, labels = obtain_data()
+def run_discriminator(data, labels):
     data_train, data_test, labels_train, labels_test = train_test_split(data, labels, test_size=0.5, random_state=42, stratify=labels)
 
     simulator, qubits = construct_base_simulator()
@@ -123,7 +132,7 @@ def run_discriminator():
 
     from time import time
     start_time = time()
-    final_params = minimize(cto, params_init, method="COBYLA", options={"maxiter":80})
+    final_params = minimize(cto, params_init, method="COBYLA", options={"maxiter":s.max_iter})
     end_time = time()
     print(end_time-start_time)
 

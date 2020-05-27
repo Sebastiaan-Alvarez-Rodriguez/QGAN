@@ -91,13 +91,17 @@ def gradient(theta, circuit, target, kernel_matrix):
 
 # Setups initial states
 def get_initial_states(qubits):
-    return (cirq.H(ancilla), *(cirq.X(q) for q in qubits[:len(qubits)//2]))
+    if s.paramtype == InitParamType.RANDOM:
+        for qubit in qubits: # according to paper, need H on all qubits
+            yield cirq.H(qubit)
+        else:
+            pass
 
 # Constructs a base circuit, with inputs set ready
 def construct_base_circuit():
     qubits = [cirq.LineQubit(x) for x in range(s.num_qubits)]
     circuit = cirq.Circuit()
-    # circuit.append(get_initial_states(qubits))
+    circuit.append(get_initial_states(qubits))
     return circuit, qubits
 
 
@@ -177,7 +181,7 @@ def train(circuit, paramlist):
 # Main Control
 ####################################
 
-def run(plot=False):
+def run_generator(plot=False):
     circuit, qubits = construct_base_circuit()
     ansatz = Ansatz()
     circuit.append(ansatz.get_circuit(qubits))
@@ -199,8 +203,3 @@ def run(plot=False):
         plt.legend(['Data', 'QCBM0','QCBM1'])
         plt.show()
     # return estimate_probs(circuit, params_final) for x in range(num_fakes)
-
-
-if __name__ == '__main__':
-    # If we are called directly, we just run the generator
-    run(plot=True)
