@@ -1,13 +1,18 @@
 from itertools import chain
+from time import time
+import logging
+import sys
 
-from src.discriminator.type1 import Discriminator1
-from src.discriminator.type2 import Discriminator2
+from src.enums.trainingtype import TrainingType
+from src.discriminator.type1 import Discriminator as Discriminator1
+from src.discriminator.type2 import Discriminator as Discriminator2
 from src.generator.generator import Generator
 
 from src.data import get_real_samples
 
 from src.settings import g_settings as gs
 from src.settings import d_settings as ds
+from src.settings import t_settings as ts
 from src.settings import data_settings as das
 
 from src.settings import settings_init
@@ -32,7 +37,7 @@ class QGAN(object):
 
 
     def generate_dataset(self):
-        return self.g.gen_synthetics(das.items_synthetic_size), get_real_samples(das.items_real_size)
+        return self.g.gen_synthetics(das.synthetic_size), get_real_samples(das.real_size)
         #Should both return a dataset of [[point0, point1..., point7], ...]
 
 # Andere manieren om real/fake data in de discriminator
@@ -51,15 +56,62 @@ class QGAN(object):
 # quantum RAM problem (opzoeken)
 
 
-    def train(self, repeats=1):
-        for x in range(repeats):
+    def train(self):
+        print(f'''
+Training network for {ts.repeats} repeats, using
+Generator:
+    initial param type {gs.paramtype.name}
+    training type {gs.trainingtype.name}
+    using {gs.num_qubits} qubits
+    depth {gs.depth} ({2*gs.depth*gs.num_qubits} params to optimize)
+    shots {gs.n_shots} (used to estimate probabilities on hardware if > 0)
+    maximal {gs.max_iter} iterations per repeat
+    learning step rate {gs.step_rate} (used only if training type is ADAM)
+Discriminator:
+    initial param type {ds.paramtype.name}
+    type {ds.type} (using {ds.num_qubits} qubits)
+    depth {ds.depth} ({2*ds.depth*ds.num_qubits} params to optimize)
+    shots {ds.n_shots} (used to estimate probabilities on hardware if > 0)
+    maximal {ds.max_iter} iterations per repeat
+Distribution:
+    mu {das.mu}
+    sigma {das.sigma}
+    batch size {das.batch_size} (higher means better log-normal estimation)
+Data:
+    discriminator trainingset size {das.synthetic_size+das.real_size} (with {das.synthetic_size} synthetic and {das.real_size} real)
+    generator trainingset size {das.synthetic_size}
+Training:
+    repeats {ts.repeats}
+    printing accuracy {ts.print_accuracy} (more info during training for a small slowdown)
+''')
+        for idx, x in enumerate(range(ts.repeats)):
+            logging.info(f'Starting training iteration {idx}')
+            it_start_time = time()
             f, r = self.generate_dataset()
             d_dataset =list(chain(f, r))
-            d_labels = list((0 for x in range(das.items_synthetic_size)))
-            d_labels.extend((1 for x in range(das.items_real_size)))
-            self.d.train(d_dataset, d_labels, printing=True)
+            d_labels = list(chain((0 for x in range(das.synthetic_size)), (1 for x in range(das.real_size))))
+            logging.info(f'New trainingset generated')
 
+            if ts.print_accuracy:
+                logging.info(f'Discriminator accuracy pre: {self.d.test(d_dataset, d_labels)}')
+            d_start_time = time()
+            self.d.train(d_dataset, d_labels)
+            d_end_time = time()
+            logging.info(f'Discriminator training completed in {(d_end_time-d_start_time):.4} seconds')
+            if ts.print_accuracy:
+                logging.info(f'Discriminator accuracy post: {self.d.test(d_dataset, d_labels)}')
+
+            if ts.print_accuracy:
+                logging.info(f'Generator accuracy pre: {self.g.test(self.d)}')
+            g_start_time = time()
             self.g.train(self.d)
+            g_end_time = time()
+            logging.info(f'Generator training completed in {(g_end_time-g_start_time):.4}')
+            if ts.print_accuracy:
+                logging.info(f'Generator accuracy post: {self.g.test(self.d)}')
+
+            it_end_time = time()
+            logging.info(f'COMPLETED in {(it_end_time-it_start_time):.4} seconds')
             
             # cost-to-minimize:
             #  neemt parameters van de generator
@@ -69,7 +121,6 @@ class QGAN(object):
 
 
             # TODO: Train generator (using loss function discriminator?)
-
 
 def main():
     qgan = QGAN()

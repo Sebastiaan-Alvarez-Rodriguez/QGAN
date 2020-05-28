@@ -7,6 +7,7 @@ from enum import Enum
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
+import logging
 
 from src.settings import g_settings as s
 from src.settings import data_settings as ds
@@ -22,7 +23,7 @@ from src.enums.trainingtype import TrainingType
 
 # Estimate all probabilities of the PQCs distribution.
 def estimate_probs(circuit, params):
-    # Creating parameter resolve dict by adding state and theta.
+    # Fill in vars in circuit with provided params
     param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
     resolver = cirq.ParamResolver(dict(param_mapping))
     resolved_circuit = cirq.resolve_parameters(circuit, resolver)
@@ -42,8 +43,7 @@ def estimate_probs(circuit, params):
 
 
 def cost_to_optimize(generator, discriminator, params):
-    # params -> generate fake data (hier)
-    data = list(generator.gen_synthetics(ds.train_synthetic_size, params=params))
+    data = list(generator.gen_synthetics(ds.gen_size, params=params))
     labels = discriminator.predict(data) 
     return mean_squared_error(labels, [1 for x in range(len(labels))])
 
@@ -113,7 +113,7 @@ def train(circuit, paramlist, generator, discriminator):
         step[0] += 1
         # tracking_cost.append(loss_ansatz(x))
         # print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
-        print(f'step = {step[0]}')
+        logging.debug(f'step = {step[0]}')
 
     cto = partial(cost_to_optimize, generator, discriminator)
     if s.trainingtype == TrainingType.ADAM:
@@ -126,7 +126,6 @@ def train(circuit, paramlist, generator, discriminator):
             callback(paramlist)
             if step[0] == s.max_iter:
                 break
-        # return loss_ansatz(paramlist), paramlist
         return None, paramlist
 
     else:
@@ -161,16 +160,27 @@ class Generator(object):
         return loss, params_final
 
 
+    def test(self, discriminator, params=None):
+        if params is None:
+            params = self.params
+        return 1.0 - cost_to_optimize(self, discriminator, params)
+
+
     # Generate synthetic data, used to train discriminator
     def gen_synthetics(self, amount, params=None):
         if s.n_shots > 0:
-            if not params is None:
-                return (estimate_probs(self.circuit, params) for x in range(amount))
-            else:
-                return (estimate_probs(self.circuit, self.params) for x in range(amount))
+            if params is None:
+                params = self.params
+            return (estimate_probs(self.circuit, params) for x in range(amount))
         else:
             raise NotImplementedError('All same samples would be generated')
 
 
     def print_circuit(self, transpose=True):
         print(self.circuit.to_text_diagram(transpose=transpose))
+
+    def __str__(self):
+        return self.circuit.to_text_diagram(transpose=True)
+
+    def __repr__(self):
+        return str(self)

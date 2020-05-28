@@ -2,9 +2,9 @@ import numpy as np
 from sklearn.metrics import mean_squared_error, accuracy_score
 from scipy.optimize import minimize
 from functools import partial
-from time import time
 from sympy import Symbol
 import cirq
+import logging
 
 from src.settings import d_settings as s
 from src.enums.initparamtype import get_init_params
@@ -67,7 +67,6 @@ def run_circuit(simulator, circuit, qubits, params, datapoint):
         param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
         resolver = cirq.ParamResolver(dict(param_mapping))
         resolved_circuit = cirq.resolve_parameters(circuit, resolver)
-        # End of added code
 
         # Added trick to convert datapoint to initial state
         '''
@@ -108,24 +107,18 @@ def predict(simulator, circuit, qubits, params, data):
 ####################################
 # Train
 ####################################
-def train(simulator, circuit, qubits, paramlist, data, labels, printing):
+def train(simulator, circuit, qubits, paramlist, data, labels):
     cto = partial(cost_to_optimize, simulator, circuit, qubits, data, labels)
-    if printing:
-        print(f'Discriminator accuracy pre:  {accuracy_score(labels, predict(simulator, circuit, qubits, paramlist, data))}')
-
-    start_time = time()
+    logging.debug(f'params start: {paramlist}')
     res = minimize(cto, paramlist, method='COBYLA', options={'maxiter':s.max_iter})
-    end_time = time()
-    if printing:
-        print(end_time-start_time)
-        print(f'Discriminator accuracy post: {accuracy_score(labels, predict(simulator, circuit, qubits, res.x, data))}')
+    logging.debug(f'params end: {res.x}')
     return res.fun, res.x
 
 
 ####################################
 # Main Control
 ####################################
-class Discriminator1(object):
+class Discriminator(object):
     def __init__(self):
         # self.params = np.random.uniform(-2*np.pi, 2*np.pi, size=num_params) # Old circle stuff
         self.params = get_init_params(s.paramtype, 2*s.depth*s.num_qubits)
@@ -135,11 +128,18 @@ class Discriminator1(object):
 
 
     # Train discriminator to better learn difference between real and fake data
-    def train(self, data, labels, printing=False):
+    def train(self, data, labels):
         # Potential problem: Maybe there is no res.fun as loss
-        loss, params_final = train(self.simulator, self.circuit, self.qubits, self.params, data, labels, printing)
+        loss, params_final = train(self.simulator, self.circuit, self.qubits, self.params, data, labels)
         self.params = params_final
         return loss, params_final
+
+
+    def test(self, data, labels, params=None):
+        if params is None:
+            return accuracy_score(labels, predict(self.simulator, self.circuit, self.qubits, self.params, data))
+        else:
+            return accuracy_score(labels, predict(self.simulator, self.circuit, self.qubits, params, data))
 
 
     def predict(self, data):
