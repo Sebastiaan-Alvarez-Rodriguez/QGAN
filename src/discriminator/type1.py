@@ -8,7 +8,7 @@ import logging
 
 from src.settings import d_settings as s
 from src.enums.initparamtype import get_init_params
-
+import src.util as util
 
 ####################################
 # Simulator generation
@@ -137,9 +137,15 @@ class Discriminator(object):
 
     def test(self, data, labels, params=None):
         if params is None:
-            return accuracy_score(labels, predict(self.simulator, self.circuit, self.qubits, self.params, data))
-        else:
-            return accuracy_score(labels, predict(self.simulator, self.circuit, self.qubits, params, data))
+            params = self.params
+        return accuracy_score(labels, predict(self.simulator, self.circuit, self.qubits, params, data))
+
+
+    def test2(self, data, labels, params=None):
+        if params is None:
+            params = self.params
+        observed = predict(self.simulator, self.circuit, self.qubits, params, data)
+        return accuracy_score(labels, observed), util.stat(labels, observed)
 
 
     def predict(self, data):
@@ -151,3 +157,9 @@ class Discriminator(object):
             return (run_circuit(self.simulator, self.circuit, self.qubits, self.params, datapoint) for datapoint in val)
         else:
             return run_circuit(self.simulator, self.circuit, self.qubits, self.params, val)
+
+    def __str__(self):
+        return self.circuit.to_text_diagram(transpose=True)
+
+    def __repr__(self):
+        return str(self)

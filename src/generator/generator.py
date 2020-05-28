@@ -4,7 +4,6 @@ import numpy as np
 import cirq
 from sympy import Symbol, Matrix
 from enum import Enum
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
 import logging
@@ -115,6 +114,8 @@ def train(circuit, paramlist, generator, discriminator):
         # print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
         logging.debug(f'step = {step[0]}')
 
+    logging.debug(f'params start: {paramlist}')
+
     cto = partial(cost_to_optimize, generator, discriminator)
     if s.trainingtype == TrainingType.ADAM:
         from climin import Adam
@@ -126,6 +127,7 @@ def train(circuit, paramlist, generator, discriminator):
             callback(paramlist)
             if step[0] == s.max_iter:
                 break
+        logging.debug(f'params end: {paramlist}')
         return None, paramlist
 
     else:
@@ -138,6 +140,7 @@ def train(circuit, paramlist, generator, discriminator):
                        tol=10**-4, 
                        options={'maxiter':s.max_iter, 'disp': 0, 'gtol':1e-10, 'ftol':0}, 
                        callback=callback)
+        logging.debug(f'params end: {res.x}')
         return res.fun, res.x
 
 

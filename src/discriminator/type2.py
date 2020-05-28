@@ -9,6 +9,7 @@ import logging
 
 from src.settings import d_settings as s
 from src.enums.initparamtype import get_init_params
+import src.util as util
 
 
 ####################################
@@ -154,9 +155,14 @@ class Discriminator(object):
 
     def test(self, data, labels, params=None):
         if params is None:
-            return accuracy_score(labels, predict(self.ansatz, self.qubits, self.params, data))
-        else:
-            return accuracy_score(labels, predict(self.ansatz, self.qubits, params, data))
+            params = self.params
+        return accuracy_score(labels, predict(self.ansatz, self.qubits, params, data))
+
+    def test2(self, data, labels, params=None):
+        if params is None:
+            params = self.params
+        observed = predict(self.ansatz, self.qubits, params, data)
+        return accuracy_score(labels, observed), util.stat(labels, observed)
 
 
     def predict(self, data):

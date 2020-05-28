@@ -2,6 +2,7 @@ from itertools import chain
 from time import time
 import logging
 import sys
+import matplotlib.pyplot as plt
 
 from src.enums.trainingtype import TrainingType
 from src.discriminator.type1 import Discriminator as Discriminator1
@@ -83,7 +84,9 @@ Data:
 Training:
     repeats {ts.repeats}
     printing accuracy {ts.print_accuracy} (more info during training for a small slowdown)
+    showing figures is set to {ts.show_figs}
 ''')
+        total_start_time = time()
         for idx, x in enumerate(range(ts.repeats)):
             logging.info(f'Starting training iteration {idx}')
             it_start_time = time()
@@ -106,21 +109,40 @@ Training:
             g_start_time = time()
             self.g.train(self.d)
             g_end_time = time()
-            logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)}')
+            logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)} seconds')
             if ts.print_accuracy:
                 logging.info(f'Generator accuracy post: {self.g.test(self.d)}')
 
             it_end_time = time()
             logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
-            
-            # cost-to-minimize:
-            #  neemt parameters van de generator
-            #  aan de hand van params genereer ik data
-            #  op data laat je discriminator los (aka genereer labels)
-            #  mean_squared_loss van labels en lijst met 1'en
+           
+        total_end_time = time()
+        logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
 
+        # Now do some testing... e.g. generate plot of 1/multiple generator output(s)?
 
-            # TODO: Train generator (using loss function discriminator?)
+        plt.plot(next(get_real_samples(1)))
+        for dist in self.g.gen_synthetics(4):
+            plt.plot(dist)
+        legend = ['Data']
+        legend.extend(list(f'gen{x}' for x in range(4)))
+        plt.legend(legend)
+        if ts.show_figs:
+            plt.show()
+        plt.savefig('gen.pdf')
+
+        test_f, test_r = self.generate_dataset()
+        test_dataset =list(chain(test_f, test_r))
+        test_labels = list(chain((0 for x in range(das.synthetic_size)), (1 for x in range(das.real_size))))
+        accuracy, layout = self.d.test2(test_dataset, test_labels)
+        print(f'Discriminator accuracy: {accuracy}')
+        TP, FP, TN, FN = layout
+        print(f'TP: {TP}')
+        print(f'FP: {FP}')
+        print(f'TN: {TN}')
+        print(f'FN: {FN}')
+        print(f'Total: {das.synthetic_size+das.real_size}')
+
 
 def main():
     qgan = QGAN()

@@ -41,10 +41,12 @@ class DataSettings(object):
         self.real_size = real_size
         self.gen_size = gen_size
 
+
 class TrainingSettings(object):
-    def __init__(self, repeats, print_accuracy):
+    def __init__(self, repeats, print_accuracy, show_figs):
         self.repeats = repeats
         self.print_accuracy = print_accuracy
+        self.show_figs = show_figs
 
 
 def _init(args):
@@ -76,9 +78,15 @@ def _init(args):
     if args.log:
         logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s', level=getattr(logging, args.log.upper()))
     else:
-        logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s')
+        logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s', level=logging.INFO)
     if args.print_accuracy:
         t_settings.print_accuracy = args.print_accuracy
+    if args.show_figs:
+        t_settings.show_figs = args.show_figs
+
+    if args.log and args.print_accuracy and getattr(logging, args.log.upper()) > logging.INFO:
+        raise ValueError('Accuracies are printed on INFO logging level. Set logging to info level or lower')
+
 
 def settings_init():
     parser = argparse.ArgumentParser(description='Simulate quantum generative adversarial network')
@@ -90,8 +98,9 @@ def settings_init():
     parser.add_argument('-id', '--iter_discriminator', type=int, help=f'Iterations to train discriminator in one network update (Default {d_settings.max_iter})')
     parser.add_argument('-ig', '--iter_generator', type=int, help=f'Iterations to train generator in one network update (Default {g_settings.max_iter})')
     parser.add_argument('-dis', '--discriminator_type', type=int, choices=[1,2], help=f'Type to use for discriminator, as explained by Casper. Note that type 1 uses 2^qubits qubits, while type 2 uses just qubits qubits (Default {d_settings.type})')
-    parser.add_argument('-l', '--log', type=str, choices=['debug', 'info', 'warning', 'error', 'critical'], help=f'Logging severity (Default "warning")')
+    parser.add_argument('-l', '--log', type=str, choices=['debug', 'info', 'warning', 'error', 'critical'], help=f'Logging severity (Default "info")')
     parser.add_argument('-pa', '--print_accuracy', action='store_true', help=f'Print intermediate accuracies for generator and discriminator (slows down training a bit) (Default {print_accuracy})')
+    parser.add_argument('-sf', '--show_figs', action='store_true', help=f'Show figures (should be off if you are running on a server environment) (Default {t_settings.show_figs})')
     _init(parser.parse_args())
 
 g_num_qubits = 3
@@ -127,5 +136,6 @@ data_settings = DataSettings(mu, sigma, batch_size, synthetic_size, real_size, g
 
 repeats = 10
 print_accuracy = False
+show_figs = False
 global t_settings
-t_settings = TrainingSettings(repeats, print_accuracy)
+t_settings = TrainingSettings(repeats, print_accuracy, show_figs)
