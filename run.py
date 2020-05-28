@@ -1,10 +1,14 @@
-from src.discriminator import Discriminator
-from src.generator import Generator
+from itertools import chain
+
+from src.discriminator.type1 import Discriminator1
+from src.discriminator.type2 import Discriminator2
+from src.generator.generator import Generator
 
 from src.data import get_real_samples
 
 from src.settings import g_settings as gs
-from src.settings import data_settings as ds
+from src.settings import d_settings as ds
+from src.settings import data_settings as das
 
 from src.settings import settings_init
 
@@ -23,12 +27,12 @@ The plan:
 
 class QGAN(object):
     def __init__(self):
-        self.d = Discriminator()
+        self.d = Discriminator1() if ds.type == 1 else Discriminator2()
         self.g = Generator()
 
 
     def generate_dataset(self):
-        return self.g.gen_synthetics(ds.items_synthetic_size), get_real_samples(ds.items_real_size)
+        return self.g.gen_synthetics(das.items_synthetic_size), get_real_samples(das.items_real_size)
         #Should both return a dataset of [[point0, point1..., point7], ...]
 
 # Andere manieren om real/fake data in de discriminator
@@ -50,17 +54,13 @@ class QGAN(object):
     def train(self, repeats=1):
         for x in range(repeats):
             f, r = self.generate_dataset()
+            d_dataset =list(chain(f, r))
+            d_labels = list((0 for x in range(das.items_synthetic_size)))
+            d_labels.extend((1 for x in range(das.items_real_size)))
+            self.d.train(d_dataset, d_labels, printing=True)
 
-            d_dataset = list(f).append(list(r))
-            d_labels = [0 for x in range(ds.items_synthetic_size)]
-            d_labels.append([1 for x in range(ds.items_real_size)])
-            self.d.train(d_data, d_labels, printing=True)
-
-            g_dataset = self.g.gen_synthetics(ds.items_synthetic_size)
-            g_labels = self.d.predict(g_dataset)
-            # 1 = real, 0 = fake
-            # Try: maximize (len(labels[labels==1]))
-
+            self.g.train(self.d)
+            
             # cost-to-minimize:
             #  neemt parameters van de generator
             #  aan de hand van params genereer ik data

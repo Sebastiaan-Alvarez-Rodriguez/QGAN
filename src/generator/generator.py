@@ -5,8 +5,12 @@ import cirq
 from sympy import Symbol, Matrix
 from enum import Enum
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+from sklearn.metrics import mean_squared_error
 
 from src.settings import g_settings as s
+from src.settings import data_settings as ds
+
 from src.data import get_real_data
 from src.enums.initparamtype import InitParamType, get_init_params
 from src.enums.trainingtype import TrainingType
@@ -37,11 +41,11 @@ def estimate_probs(circuit, params):
     return probs
 
 
-def cost_to_optimize(discriminator, params):
+def cost_to_optimize(generator, discriminator, params):
     # params -> generate fake data (hier)
-    data = gen_synthetics(ds.train_synthetic_size, params=params)
+    data = list(generator.gen_synthetics(ds.train_synthetic_size, params=params))
     labels = discriminator.predict(data) 
-    return mean_squared_error(labels, (1 for x in range(len(labels))))
+    return mean_squared_error(labels, [1 for x in range(len(labels))])
 
 
 ####################################
@@ -102,29 +106,36 @@ class Ansatz(object):
 # Training method Control
 ####################################
 
-def train(circuit, paramlist):
+def train(circuit, paramlist, generator, discriminator):
     step = [0]
-    # tracking_cost = []
-    # def callback(x, *args, **kwargs):
-    #     step[0] += 1
-    #     tracking_cost.append(loss_ansatz(x))
-    #     print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
+    tracking_cost = []
+    def callback(x, *args, **kwargs):
+        step[0] += 1
+        # tracking_cost.append(loss_ansatz(x))
+        # print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
+        print(f'step = {step[0]}')
 
+    cto = partial(cost_to_optimize, generator, discriminator)
     if s.trainingtype == TrainingType.ADAM:
         from climin import Adam
-        optimizer = Adam(wrt=paramlist, fprime=partial(gradient, circuit=circuit, target=get_real_data(), kernel_matrix=kernel_matrix),step_rate=s.step_rate)
+        optimizer = Adam(wrt=paramlist, 
+                        # fprime=partial(gradient, circuit=circuit, target=get_real_data(), kernel_matrix=kernel_matrix),
+                        fprime=cto,
+                        step_rate=s.step_rate)
         for info in optimizer:
             callback(paramlist)
             if step[0] == s.max_iter:
                 break
-        return loss_ansatz(paramlist), paramlist
+        # return loss_ansatz(paramlist), paramlist
+        return None, paramlist
+
     else:
         methodname = s.trainingtype.get_scipy_name()
-        from scipy.optimize import minimize
-        res = minimize(loss_ansatz,
+        
+        res = minimize(cto,
                        paramlist, 
                        method=methodname, 
-                       jac=partial(gradient, circuit=circuit, target=get_real_data(), kernel_matrix=kernel_matrix),
+                       # jac=partial(gradient, circuit=circuit, target=get_real_data(), kernel_matrix=kernel_matrix),
                        tol=10**-4, 
                        options={'maxiter':s.max_iter, 'disp': 0, 'gtol':1e-10, 'ftol':0}, 
                        callback=callback)
@@ -135,22 +146,6 @@ def train(circuit, paramlist):
 # Main Control
 ####################################
 
-# def run_generator(plot=False):
-#     # Training the QCBM.
-#     start_time = time()
-#     loss, params_final = train(circuit, params_init)
-#     end_time = time()
-#     print(end_time-start_time)
-
-#     if plot:
-#         plt.plot(get_real_data())
-#         plt.plot(estimate_probs(circuit, params_final))
-#         plt.plot(estimate_probs(circuit, params_final)) #Only different if we use n_shots > 0
-#         plt.legend(['Data', 'QCBM0','QCBM1'])
-#         plt.show()
-#     # return estimate_probs(circuit, params_final) for x in range(num_fakes)
-
-
 class Generator(object):
     def __init__(self):
         self.params = get_init_params(s.paramtype, 2*s.depth*s.num_qubits)
@@ -160,8 +155,8 @@ class Generator(object):
 
 
     # Train this thing to become better at providing synthetic data
-    def train(self):
-        loss, params_final = train(self.circuit, self.params)
+    def train(self, discriminator):
+        loss, params_final = train(self.circuit, self.params, self, discriminator)
         self.params = params_final
         return loss, params_final
 
@@ -169,7 +164,7 @@ class Generator(object):
     # Generate synthetic data, used to train discriminator
     def gen_synthetics(self, amount, params=None):
         if s.n_shots > 0:
-            if params:
+            if not params is None:
                 return (estimate_probs(self.circuit, params) for x in range(amount))
             else:
                 return (estimate_probs(self.circuit, self.params) for x in range(amount))

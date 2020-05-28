@@ -16,12 +16,13 @@ class GeneratorSettings(object):
 
 
 class DiscriminatorSettings(object):
-    def __init__(self, num_qubits, depth, n_shots, paramtype, max_iter=80):
+    def __init__(self, num_qubits, depth, n_shots, paramtype, max_iter, d_type):
         self.num_qubits = num_qubits
         self.depth = depth
         self.n_shots = n_shots
         self.paramtype = paramtype
         self.max_iter = max_iter 
+        self.type = d_type
 
 
 class DataSettings(object):
@@ -34,7 +35,7 @@ class DataSettings(object):
         self.train_synthetic_size = train_synthetic_size
 
 
-def _init(repeats, items_s, items_r, g_num_qubits):
+def _init(repeats, items_s, items_r, g_num_qubits, d_type):
     # Generator specific settings
     global g_settings
     global d_settings
@@ -48,7 +49,9 @@ def _init(repeats, items_s, items_r, g_num_qubits):
     if g_num_qubits:
         g_settings.num_qubits = g_num_qubits
         d_settings.num_qubits = 2**g_num_qubits
-
+    if d_type:
+         d_settings.num_qubits = (2**g_settings.num_qubits if d_type == 2 else g_settings.num_qubits)
+         d_settings.type = d_type
 
 def settings_init():
     parser = argparse.ArgumentParser(description='Simulate quantum generative adversarial network')
@@ -56,9 +59,9 @@ def settings_init():
     parser.add_argument('-r', '--repeats', type=int, help=f'Amount of repeats to use for training')
     parser.add_argument('-is', '--items_synthetic', type=int, help=f'Amount of synthetic samples to process per network update (Default {data_settings.items_synthetic_size})')
     parser.add_argument('-it', '--items_real', type=int, help=f'Amount of real samples to process per network update (Default {data_settings.items_real_size})')
-    # parser.add_argument('-exc','--excited_state', action='store_true', help=f'If set, searches for excited instead of ground state (default {default_excited_state})')
+    parser.add_argument('-dt', '--discriminator_type', type=int, choices=[1,2], help=f'Type to use for discriminator, as explained by Casper. Note that type 1 uses 2^qubits qubits, while type 2 uses just qubits qubits (Default {d_settings.type})')
     args = parser.parse_args()
-    _init(args.repeats, args.items_synthetic, args.items_real, args.qubits)
+    _init(args.repeats, args.items_synthetic, args.items_real, args.qubits, args.discriminator_type)
 
 g_num_qubits = 3
 g_depth = 2
@@ -75,9 +78,10 @@ d_num_qubits = 2**g_num_qubits
 d_depth = 5
 d_n_shots = 0
 d_paramtype = InitParamType.RANDOM
-d_max_iter = 80
+d_max_iter = 10
+d_type = 2
 global d_settings
-d_settings = DiscriminatorSettings(d_num_qubits, d_depth, d_n_shots, d_paramtype, d_max_iter)
+d_settings = DiscriminatorSettings(d_num_qubits, d_depth, d_n_shots, d_paramtype, d_max_iter, d_type)
 
 # Data settings
 repeats = 10

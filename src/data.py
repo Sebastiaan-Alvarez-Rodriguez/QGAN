@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import lognorm
 
 from src.settings import data_settings as s
-from src.settings import d_settings as ds
+from src.settings import g_settings as gs
 
 # Our true distribution, authentic/real data, however you want to call it
 def gaussian_pdf_exact():
@@ -16,7 +16,7 @@ def get_real_data():
 
 
 def normal_pdf(amount):
-    datapoints = ds.num_qubits
+    datapoints = 2**gs.num_qubits
     data = np.empty(0)
     while len(data) != amount:
         data = np.append(data, lognorm.rvs(s=s.mu, scale=np.exp(s.sigma), size=amount-len(data)))
@@ -24,7 +24,7 @@ def normal_pdf(amount):
     return data
 
 def get_dist(data):
-    return np.array([len(data[data==x])/len(data) for x in range(ds.num_qubits)])
+    return np.array([len(data[data==x])/len(data) for x in range(2**gs.num_qubits)])
 
 
 def get_real_samples(amount):
