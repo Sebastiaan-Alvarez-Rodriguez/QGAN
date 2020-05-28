@@ -97,7 +97,7 @@ Training:
             d_start_time = time()
             self.d.train(d_dataset, d_labels)
             d_end_time = time()
-            logging.info(f'Discriminator training completed in {(d_end_time-d_start_time):.4} seconds')
+            logging.info(f'Discriminator training completed in {round(d_end_time-d_start_time, 2)} seconds')
             if ts.print_accuracy:
                 logging.info(f'Discriminator accuracy post: {self.d.test(d_dataset, d_labels)}')
 
@@ -106,12 +106,12 @@ Training:
             g_start_time = time()
             self.g.train(self.d)
             g_end_time = time()
-            logging.info(f'Generator training completed in {(g_end_time-g_start_time):.4}')
+            logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)}')
             if ts.print_accuracy:
                 logging.info(f'Generator accuracy post: {self.g.test(self.d)}')
 
             it_end_time = time()
-            logging.info(f'COMPLETED in {(it_end_time-it_start_time):.4} seconds')
+            logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
             
             # cost-to-minimize:
             #  neemt parameters van de generator

@@ -47,34 +47,38 @@ class TrainingSettings(object):
         self.print_accuracy = print_accuracy
 
 
-def _init(repeats, items_s, items_r, generator, g_num_qubits, d_type, loglevel, print_accuracy):
+def _init(args):
     # Generator specific settings
     global g_settings
     global d_settings
     global data_settings
     global t_settings
 
-    if repeats:
-        t_settings.repeats = repeats
-    if items_s:
-        data_settings.synthetic_size = items_s
-    if items_r:
-        data_settings.real_size = items_r
-    if generator:
-        data_settings.gen_size = generator
-    if g_num_qubits:
-        g_settings.num_qubits = g_num_qubits
-        d_settings.num_qubits = 2**g_num_qubits
-    if d_type:
-         d_settings.num_qubits = (2**g_settings.num_qubits if d_type == 2 else g_settings.num_qubits)
-         d_settings.type = d_type
-    if loglevel:
-        logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s', level=getattr(logging, loglevel.upper()))
+    if args.qubits:
+        g_settings.num_qubits = args.qubits
+        d_settings.num_qubits = 2**args.qubits
+    if args.repeats:
+        t_settings.repeats = args.repeats
+    if args.synthetic:
+        data_settings.synthetic_size = args.synthetic
+    if args.real:
+        data_settings.real_size = args.real
+    if args.generator:
+        data_settings.gen_size = args.generator
+    if args.iter_discriminator:
+        d_settings.max_iter = args.iter_discriminator
+    if args.iter_generator:
+        g_settings.max_iter = args.iter_generator
+    
+    if args.discriminator_type:
+         d_settings.num_qubits = (2**g_settings.num_qubits if args.discriminator_type == 2 else g_settings.num_qubits)
+         d_settings.type = args.discriminator_type
+    if args.log:
+        logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s', level=getattr(logging, args.log.upper()))
     else:
         logging.basicConfig(format='%(asctime)s - %(name)s(%(levelname)s): %(message)s')
-    if print_accuracy:
-        t_settings.print_accuracy = print_accuracy
-
+    if args.print_accuracy:
+        t_settings.print_accuracy = args.print_accuracy
 
 def settings_init():
     parser = argparse.ArgumentParser(description='Simulate quantum generative adversarial network')
@@ -83,11 +87,12 @@ def settings_init():
     parser.add_argument('-ds', '--synthetic', type=int, help=f'Amount of synthetic samples to process per discriminator minimize update (Default {data_settings.synthetic_size})')
     parser.add_argument('-dr', '--real', type=int, help=f'Amount of real samples to process per discriminator minimize update (Default {data_settings.real_size})')
     parser.add_argument('-dg', '--generator', type=int, help=f'Amount of real samples to process per generator minimize update (Default {data_settings.gen_size})')
+    parser.add_argument('-id', '--iter_discriminator', type=int, help=f'Iterations to train discriminator in one network update (Default {d_settings.max_iter})')
+    parser.add_argument('-ig', '--iter_generator', type=int, help=f'Iterations to train generator in one network update (Default {g_settings.max_iter})')
     parser.add_argument('-dis', '--discriminator_type', type=int, choices=[1,2], help=f'Type to use for discriminator, as explained by Casper. Note that type 1 uses 2^qubits qubits, while type 2 uses just qubits qubits (Default {d_settings.type})')
     parser.add_argument('-l', '--log', type=str, choices=['debug', 'info', 'warning', 'error', 'critical'], help=f'Logging severity (Default "warning")')
     parser.add_argument('-pa', '--print_accuracy', action='store_true', help=f'Print intermediate accuracies for generator and discriminator (slows down training a bit) (Default {print_accuracy})')
-    args = parser.parse_args()
-    _init(args.repeats, args.synthetic, args.real, args.generator, args.qubits, args.discriminator_type, args.log, args.print_accuracy)
+    _init(parser.parse_args())
 
 g_num_qubits = 3
 g_depth = 2
