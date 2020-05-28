@@ -25,12 +25,14 @@ class DiscriminatorSettings(object):
 
 
 class DataSettings(object):
-    def __init__(self, mu, sigma, batch_size, items_synthetic_size, items_real_size):
+    def __init__(self, mu, sigma, batch_size, items_synthetic_size, items_real_size, train_synthetic_size):
         self.mu = mu
         self.sigma = sigma
         self.batch_size = batch_size
         self.items_synthetic_size = items_synthetic_size
         self.items_real_size = items_real_size
+        self.train_synthetic_size = train_synthetic_size
+
 
 def _init(repeats, items_s, items_r, g_num_qubits):
     # Generator specific settings
@@ -84,5 +86,7 @@ sigma = 1.0
 batch_size = 2000
 items_synthetic_size = 100
 items_real_size = 100
+
+train_synthetic_size = 100
 global data_settings
-data_settings = DataSettings(mu, sigma, batch_size, items_synthetic_size, items_real_size)
+data_settings = DataSettings(mu, sigma, batch_size, items_synthetic_size, items_real_size, train_synthetic_size)

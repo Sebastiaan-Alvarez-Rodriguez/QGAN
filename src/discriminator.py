@@ -83,8 +83,7 @@ def run_circuit(simulator, ansatz, qubits, params, datapoint):
 # Optimize
 ####################################
 def sweep_data(simulator, ansatz, qubits, params, data):
-    probas = [run_circuit(simulator, ansatz, qubits, params, data[i]) for i in range(data.shape[0])]
-    return probas
+    return [run_circuit(simulator, ansatz, qubits, params, data[i]) for i in range(data.shape[0])]
 
 
 def cost_to_optimize(simulator, ansatz, qubits, data, labels, params):
@@ -136,6 +135,9 @@ class Discriminator(object):
         self.params = params_final
         return loss, params_final
 
+
+    def predict(self, data):
+        predict(self.simulator, self.qubits, self.params, data)
 
     # Run discriminator for val. Val can be 1 datapoint or a list of points (then a generator is returned lazily)
     def run(self, val):

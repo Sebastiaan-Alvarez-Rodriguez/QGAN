@@ -37,52 +37,11 @@ def estimate_probs(circuit, params):
     return probs
 
 
-# Function that computes the kernel for the MMD loss
-def multi_rbf_kernel(x, y, sigma_list=[0.25, 4]):
-    # multi-RBF kernel. Args: 
-    #     x,y -> 1-or-2darray: collection of samples A (x) or B (y)
-    #     sigma_list (list): a list of bandwidths.
-    # Returns: 2darray: kernel matrix.
-    ndim = x.ndim
-    assert ndim == 1 or ndim == 2
-    exponent = np.abs(x[:, None] - y[None, :])**2 if ndim == 1 else ((x[:, None, :] - y[None, :, :])**2).sum(axis=2)
-    return np.sum((np.exp(-(1.0 / (2*x))*exponent) for x in sigma_list))
-
-
-# Function that computes expectation of kernel in MMD loss
-def kernel_expectation(px, py, kernel_matrix):
-    return px.dot(kernel_matrix).dot(py)
-
-
-# Function that computes the squared MMD loss related to the given kernel_matrix.
-def squared_MMD_loss(probs, target, kernel_matrix):
-    dif_probs = probs - target
-    return kernel_expectation(dif_probs, dif_probs, kernel_matrix)
-
-
-# The loss function that we aim to minimize.
-def loss(theta, circuit, target, kernel_matrix):
-    probs = estimate_probs(circuit, theta)
-    return squared_MMD_loss(probs, target, kernel_matrix)
-
-
-# Cheat and get gradient
-def gradient(theta, circuit, target, kernel_matrix):
-    prob = estimate_probs(circuit, theta)
-    grad = []
-    for i in range(len(theta)):
-        # pi/2 phase
-        theta[i] += np.pi/2.
-        prob_pos = estimate_probs(circuit, theta)
-        # -pi/2 phase
-        theta[i] -= np.pi
-        prob_neg = estimate_probs(circuit, theta)
-        # recover
-        theta[i] += np.pi/2.
-        grad_pos = kernel_expectation(prob, prob_pos, kernel_matrix) - kernel_expectation(prob, prob_neg, kernel_matrix)
-        grad_neg = kernel_expectation(target, prob_pos, kernel_matrix) - kernel_expectation(target, prob_neg, kernel_matrix)
-        grad.append(grad_pos - grad_neg)
-    return np.array(grad)
+def cost_to_optimize(discriminator, params):
+    # params -> generate fake data (hier)
+    data = gen_synthetics(ds.train_synthetic_size, params=params)
+    labels = discriminator.predict(data) 
+    return mean_squared_error(labels, (1 for x in range(len(labels))))
 
 
 ####################################
@@ -145,16 +104,11 @@ class Ansatz(object):
 
 def train(circuit, paramlist):
     step = [0]
-    tracking_cost = []
-    def callback(x, *args, **kwargs):
-        step[0] += 1
-        tracking_cost.append(loss_ansatz(x))
-        print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
-
-    # MMD kernel
-    kernel_matrix = multi_rbf_kernel(np.arange(2**s.num_qubits), np.arange(2**s.num_qubits))
-    loss_ansatz = partial(loss, circuit=circuit, target=get_real_data(), kernel_matrix=kernel_matrix)
-
+    # tracking_cost = []
+    # def callback(x, *args, **kwargs):
+    #     step[0] += 1
+    #     tracking_cost.append(loss_ansatz(x))
+    #     print(f'step = {step[0]}, loss = {loss_ansatz(x):.5}')
 
     if s.trainingtype == TrainingType.ADAM:
         from climin import Adam
@@ -213,9 +167,12 @@ class Generator(object):
 
 
     # Generate synthetic data, used to train discriminator
-    def gen_synthetics(self, amount):
+    def gen_synthetics(self, amount, params=None):
         if s.n_shots > 0:
-            return (estimate_probs(self.circuit, self.params) for x in range(amount))
+            if params:
+                return (estimate_probs(self.circuit, params) for x in range(amount))
+            else:
+                return (estimate_probs(self.circuit, self.params) for x in range(amount))
         else:
             raise NotImplementedError('All same samples would be generated')
 
