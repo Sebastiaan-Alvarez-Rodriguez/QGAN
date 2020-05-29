@@ -3,6 +3,7 @@ from time import time
 import logging
 import sys
 import matplotlib.pyplot as plt
+import numpy as np
 
 from src.enums.trainingtype import TrainingType
 from src.discriminator.type1 import Discriminator as Discriminator1
@@ -36,29 +37,88 @@ class QGAN(object):
         self.d = Discriminator1() if ds.type == 1 else Discriminator2()
         self.g = Generator()
 
-
+    # Returns dataset of [[point0, point1..., point7], ...], and list of 0 (fake) and 1 (real)
     def generate_dataset(self):
-        return self.g.gen_synthetics(das.synthetic_size), get_real_samples(das.real_size)
-        #Should both return a dataset of [[point0, point1..., point7], ...]
+        f, r = self.g.gen_synthetics(das.synthetic_size), get_real_samples(das.real_size)
+        labels = list(chain((0 for x in range(das.synthetic_size)), (1 for x in range(das.real_size))))
+        return list(chain(f, r)), labels
+            
 
-# Andere manieren om real/fake data in de discriminator
-# Nu: 8 qubits, losse kans op 1 qubits (optie 2)
-# (optie 1): meer representatie
-#   Geen encoding
-#   Hardcode data in quantum state (3-qubit state, 8 computational basis state)
-#   a|x> for x in range(8), kan afhankelijk zijn van a
-#   a_x = sqrt(point(x)) (point -> 1 van entries )
-#   a_0|0> + a_1|1> + a_2|2> + ... -> in variational circuit van discriminator, zelfde loss function
-#   
-# (optie 3): we hebben probabilities niet, alleen functie voor probs
-#   Bepaal kansen door repeats
-#   Schatting van kansen, en dan zelfde optie 2
-# 
-# quantum RAM problem (opzoeken)
+    def _train_discriminator(self):
+        dataset, labels = self.generate_dataset()
+        logging.info(f'New trainingset generated')
+
+        if ts.print_accuracy:
+            logging.info(f'Discriminator mean squared error pre: {self.d.test(dataset, labels)}')
+        d_start_time = time()
+        self.d.train(dataset, labels)
+        d_end_time = time()
+        logging.info(f'Discriminator training completed in {round(d_end_time-d_start_time, 2)} seconds')
+        if ts.print_accuracy:
+            logging.info(f'Discriminator mean squared error post: {self.d.test(dataset, labels)}')
+
+
+    def _train_generator(self):
+        if ts.print_accuracy:
+            logging.info(f'Generator mean squared error pre: {self.g.test(self.d)}')
+        g_start_time = time()
+        self.g.train(self.d)
+        g_end_time = time()
+        logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)} seconds')
+        if ts.print_accuracy:
+            logging.info(f'Generator mean squared error post: {self.g.test(self.d)}')
 
 
     def train(self):
-        print(f'''
+        total_start_time = time()
+        for idx, x in enumerate(range(ts.repeats)):
+            logging.info(f'Starting training iteration {idx}')
+            it_start_time = time()
+
+            self._train_discriminator()
+            self._train_generator()
+
+            it_end_time = time()
+            logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
+           
+        total_end_time = time()
+        logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
+
+
+    def _test_generator(self):
+        print(f'Final generator squared error (can be high if discriminator is trained well): {self.g.test(self.d)}')
+
+        logging.getLogger('matplotlib').setLevel(logging.WARNING) #shut up matplotlib
+        plt.plot(next(get_real_samples(1)))
+        for dist in self.g.gen_synthetics(4):
+            plt.plot(dist)
+        legend = ['Data']
+        legend.extend(list(f'gen{x}' for x in range(4)))
+        plt.legend(legend)
+        if ts.show_figs:
+            plt.show()
+        plt.savefig('gen.pdf')
+
+
+    def _test_discriminator(self):
+        dataset, labels = self.generate_dataset()
+        accuracy, details = self.d.test2(dataset, labels)
+        logging.info(f'Final discriminator mean squared error (on test): {accuracy}')
+        TP, FP, TN, FN = details
+        logging.info(f'TP: {TP}')
+        logging.info(f'FP: {FP}')
+        logging.info(f'TN: {TN}')
+        logging.info(f'FN: {FN}')
+        logging.info(f'Total: {das.synthetic_size+das.real_size}')
+
+
+    def test(self):
+        self._test_generator()
+        self._test_discriminator()
+
+
+def parameter_prelude():
+    logging.info(f'''
 Training network for {ts.repeats} repeats, using
 Generator:
     initial param type {gs.paramtype.name}
@@ -70,6 +130,7 @@ Generator:
     learning step rate {gs.step_rate} (used only if training type is ADAM)
 Discriminator:
     initial param type {ds.paramtype.name}
+    training type {ds.trainingtype.name}
     type {ds.type} (using {ds.num_qubits} qubits)
     depth {ds.depth} ({2*ds.depth*ds.num_qubits} params to optimize)
     shots {ds.n_shots} (used to estimate probabilities on hardware if > 0)
@@ -80,73 +141,18 @@ Distribution:
     batch size {das.batch_size} (higher means better log-normal estimation)
 Data:
     discriminator trainingset size {das.synthetic_size+das.real_size} (with {das.synthetic_size} synthetic and {das.real_size} real)
-    generator trainingset size {das.synthetic_size}
+    generator trainingset size {das.gen_size}
 Training:
     repeats {ts.repeats}
     printing accuracy {ts.print_accuracy} (more info during training for a small slowdown)
     showing figures is set to {ts.show_figs}
 ''')
-        total_start_time = time()
-        for idx, x in enumerate(range(ts.repeats)):
-            logging.info(f'Starting training iteration {idx}')
-            it_start_time = time()
-            f, r = self.generate_dataset()
-            d_dataset =list(chain(f, r))
-            d_labels = list(chain((0 for x in range(das.synthetic_size)), (1 for x in range(das.real_size))))
-            logging.info(f'New trainingset generated')
-
-            if ts.print_accuracy:
-                logging.info(f'Discriminator accuracy pre: {self.d.test(d_dataset, d_labels)}')
-            d_start_time = time()
-            self.d.train(d_dataset, d_labels)
-            d_end_time = time()
-            logging.info(f'Discriminator training completed in {round(d_end_time-d_start_time, 2)} seconds')
-            if ts.print_accuracy:
-                logging.info(f'Discriminator accuracy post: {self.d.test(d_dataset, d_labels)}')
-
-            if ts.print_accuracy:
-                logging.info(f'Generator accuracy pre: {self.g.test(self.d)}')
-            g_start_time = time()
-            self.g.train(self.d)
-            g_end_time = time()
-            logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)} seconds')
-            if ts.print_accuracy:
-                logging.info(f'Generator accuracy post: {self.g.test(self.d)}')
-
-            it_end_time = time()
-            logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
-           
-        total_end_time = time()
-        logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
-
-        # Now do some testing... e.g. generate plot of 1/multiple generator output(s)?
-
-        plt.plot(next(get_real_samples(1)))
-        for dist in self.g.gen_synthetics(4):
-            plt.plot(dist)
-        legend = ['Data']
-        legend.extend(list(f'gen{x}' for x in range(4)))
-        plt.legend(legend)
-        if ts.show_figs:
-            plt.show()
-        plt.savefig('gen.pdf')
-
-        test_f, test_r = self.generate_dataset()
-        test_dataset =list(chain(test_f, test_r))
-        test_labels = list(chain((0 for x in range(das.synthetic_size)), (1 for x in range(das.real_size))))
-        accuracy, layout = self.d.test2(test_dataset, test_labels)
-        print(f'Discriminator accuracy: {accuracy}')
-        TP, FP, TN, FN = layout
-        print(f'TP: {TP}')
-        print(f'FP: {FP}')
-        print(f'TN: {TN}')
-        print(f'FN: {FN}')
-        print(f'Total: {das.synthetic_size+das.real_size}')
-
 
 def main():
+    parameter_prelude()
     qgan = QGAN()
     qgan.train()
+    qgan.test()
 
 
 if __name__ == '__main__':

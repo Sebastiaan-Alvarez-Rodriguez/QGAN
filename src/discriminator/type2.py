@@ -1,12 +1,12 @@
 import numpy as np 
 from sklearn.metrics import mean_squared_error, accuracy_score
-from scipy.optimize import minimize
 from functools import partial
 from time import time
 from sympy import Symbol
 import cirq
 import logging
 
+from src.optimize import optimize
 from src.settings import d_settings as s
 from src.enums.initparamtype import get_init_params
 import src.util as util
@@ -69,7 +69,7 @@ class Ansatz(object):
 # Measuring
 ####################################
 # Note, we measure chance of all 1's on all qubits below. Simulate if n_shots>0, compute final state otherwise
-def run_circuit(ansatz, qubits, params, datapoint):
+def run_circuit(ansatz, qubits, datapoint, params):
     circuit = cirq.Circuit(ansatz.get_circuit(qubits, datapoint))
     # Added to fill in parameters
     param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
@@ -87,51 +87,15 @@ def run_circuit(ansatz, qubits, params, datapoint):
         return float(frequencies[s.num_qubits-1]) / s.n_shots if s.num_qubits-1 in frequencies.keys() else 0
 
 
-    # if s.n_shots > 0:
-    #     circuit = cirq.Circuit(ansatz.get_circuit(qubits, datapoint), cirq.measure(*qubits, key='x'))
-    #     results = simulator.run(circuit, repetitions=s.n_shots)
-    #     counter_measurements = results.histogram(key='x')
-    #     return float(counter_measurements[2**s.num_qubits-1]) / s.n_shots if 2**s.num_qubits-1 in counter_measurements.keys() else 0
-    # else:
-    #     circuit = cirq.Circuit(ansatz.get_circuit(qubits, datapoint))
-       
-    #     # Added to fill in parameters
-    #     param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
-    #     resolver = cirq.ParamResolver(dict(param_mapping))
-    #     resolved_circuit = cirq.resolve_parameters(circuit, resolver)
-    #     # End of added code
-
-    #     results = simulator.simulate(resolved_circuit)
-    #     return abs(results.final_state[-1])
-
-
 ####################################
 # Optimize
 ####################################
-def sweep_data(ansatz, qubits, params, data):
-    return [run_circuit(ansatz, qubits, params, dist) for dist in data]
+def sweep_data(ansatz, qubits, data, params):
+    return [run_circuit(ansatz, qubits, dist, params) for dist in data]
 
 
 def cost_to_optimize(ansatz, qubits, data, labels, params):
-    return mean_squared_error(labels, sweep_data(ansatz, qubits, params, data))
-
-
-####################################
-# Measurements
-####################################
-def predict(ansatz, qubits, params, data):
-    return np.array([1 if p > .5 else 0 for p in sweep_data(ansatz, qubits, params, data)])
-
-
-####################################
-# Train
-####################################
-def train(ansatz, qubits, paramlist, data, labels):
-    cto = partial(cost_to_optimize, ansatz, qubits, data, labels)
-    logging.debug(f'params start: {paramlist}')
-    res = minimize(cto, paramlist, method='COBYLA', options={'maxiter':s.max_iter})
-    logging.debug(f'params end: {res.x}')
-    return res.fun, res.x
+    return mean_squared_error(labels, sweep_data(ansatz, qubits, data, params))
 
 
 ####################################
@@ -147,30 +111,32 @@ class Discriminator(object):
 
     # Train discriminator to better learn difference between real and fake data
     def train(self, data, labels):
-        # Potential problem: Maybe there is no res.fun as loss
-        loss, params_final = train(self.ansatz, self.qubits, self.params, data, labels)
+        cto = partial(cost_to_optimize, self.ansatz, self.qubits, data, labels)
+        logging.debug(f'params start: {self.params}')
+        loss, params_final = optimize(cto, self.params, s.trainingtype, s.max_iter, s.step_rate)
+        logging.debug(f'params end: {params_final}')
         self.params = params_final
         return loss, params_final
 
 
+    # Returns mean squared error on given dataset (lower=better)
     def test(self, data, labels, params=None):
-        if params is None:
-            params = self.params
-        return accuracy_score(labels, predict(self.ansatz, self.qubits, params, data))
+        return mean_squared_error(labels, self.get_chances(data, params))
 
+
+    # Returns mean squared error on generated dataset, and detailed statistics
     def test2(self, data, labels, params=None):
+        observed = self.get_chances(data, params)
+        return mean_squared_error(labels, observed), util.stat(labels, np.array([1 if p > .5 else 0 for p in observed]))
+
+
+    # Given a dataset, returns the predicted labels
+    def predict(self, data, params=None):
+        return np.array([1 if p > .5 else 0 for p in self.get_chances(data, params)])
+
+
+    # Given a dataset, returns probabilities of measuring all 1's
+    def get_chances(self, data, params=None):
         if params is None:
             params = self.params
-        observed = predict(self.ansatz, self.qubits, params, data)
-        return accuracy_score(labels, observed), util.stat(labels, observed)
-
-
-    def predict(self, data):
-        return predict(self.ansatz, self.qubits, self.params, data)
-
-    # Run discriminator for val. Val can be 1 datapoint or a list of points (then a generator is returned lazily)
-    def run(self, val):
-        if isinstance(val, list):
-            return (run_circuit(self.ansatz, self.qubits, self.params, datapoint) for datapoint in val)
-        else:
-            return run_circuit(self.ansatz, self.qubits, self.params, val)
+        return sweep_data(self.ansatz, self.qubits, data, params)

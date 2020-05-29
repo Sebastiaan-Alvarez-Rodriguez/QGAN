@@ -12,7 +12,7 @@ In other files you may find statements as 'from src.settings import g_settings a
 Those statements include settings of either (g)enerator, (d)iscriminator, (data), (t)raining
 '''
 class GeneratorSettings(object):
-    def __init__(self, num_qubits, depth, n_shots, paramtype, trainingtype, max_iter=50, step_rate=0.1):
+    def __init__(self, num_qubits, depth, n_shots, paramtype, trainingtype, max_iter, step_rate):
         self.num_qubits = num_qubits
         self.depth = depth
         self.n_shots = n_shots
@@ -23,13 +23,15 @@ class GeneratorSettings(object):
 
 
 class DiscriminatorSettings(object):
-    def __init__(self, num_qubits, depth, n_shots, paramtype, max_iter, d_type):
+    def __init__(self, num_qubits, depth, n_shots, paramtype, trainingtype, max_iter, d_type, step_rate):
         self.num_qubits = num_qubits
         self.depth = depth
         self.n_shots = n_shots
         self.paramtype = paramtype
+        self.trainingtype = trainingtype
         self.max_iter = max_iter 
         self.type = d_type
+        self.step_rate = step_rate
 
 
 class DataSettings(object):
@@ -107,21 +109,23 @@ g_num_qubits = 3
 g_depth = 2
 g_n_shots = 6000
 g_paramtype = InitParamType.RANDOM
-trainingtype = TrainingType.ADAM
-g_max_iter = 66
-step_rate = 0.1
+g_trainingtype = TrainingType.COBYLA
+g_max_iter = 20
+g_step_rate = 0.1
 global g_settings
-g_settings = GeneratorSettings(g_num_qubits, g_depth, g_n_shots, g_paramtype, trainingtype, g_max_iter, step_rate)
+g_settings = GeneratorSettings(g_num_qubits, g_depth, g_n_shots, g_paramtype, g_trainingtype, g_max_iter, g_step_rate)
 
 # Discriminator specific settings
 d_num_qubits = 2**g_num_qubits
 d_depth = 5
 d_n_shots = 0
 d_paramtype = InitParamType.RANDOM
-d_max_iter = 66
+d_trainingtype = TrainingType.COBYLA
+d_max_iter = 20
 d_type = 2
+d_step_rate = 0.1
 global d_settings
-d_settings = DiscriminatorSettings(d_num_qubits, d_depth, d_n_shots, d_paramtype, d_max_iter, d_type)
+d_settings = DiscriminatorSettings(d_num_qubits, d_depth, d_n_shots, d_paramtype, d_trainingtype, d_max_iter, d_type, d_step_rate)
 
 # Data settings
 mu = 1.0
