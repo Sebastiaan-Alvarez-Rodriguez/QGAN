@@ -19,20 +19,14 @@ from src.enums.initparamtype import InitParamType, get_init_params
 # Optimize
 ####################################
 
-# Estimate all probabilities of the PQCs distribution.
+# Estimate probabilities of distribution
 def estimate_probs(circuit, params):
     # Fill in vars in circuit with provided params
-    param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
-    resolver = cirq.ParamResolver(dict(param_mapping))
-    resolved_circuit = cirq.resolve_parameters(circuit, resolver)
-
     if s.n_shots == 0: # Use statevector simulator
-        final_state = cirq.final_wavefunction(resolved_circuit)
+        final_state = cirq.final_wavefunction(circuit)
         return np.array([np.abs(final_state[x])**2 for x in range(len(final_state))])
     else: # Run the circuit
-        # Adding measurement at the end.
-        resolved_circuit.append(cirq.measure(*resolved_circuit.all_qubits(), key='m'))
-        results = cirq.sample(resolved_circuit, repetitions=s.n_shots)
+        results = cirq.sample(circuit, repetitions=s.n_shots)
         frequencies = results.histogram(key='m')
         probs = np.zeros(2**s.num_qubits)
         for key, value in frequencies.items():
@@ -132,13 +126,15 @@ class Generator(object):
 
     # Generate synthetic data, used to train discriminator
     def gen_synthetics(self, amount, params=None):
+        if params is None:
+            params = self.params
+        param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
+        resolved_circuit = cirq.resolve_parameters(self.circuit, cirq.ParamResolver(dict(param_mapping)))
         if s.n_shots > 0:
-            if params is None:
-                params = self.params
-
-            return (estimate_probs(self.circuit, params) for x in range(amount))
+            resolved_circuit.append(cirq.measure(*resolved_circuit.all_qubits(), key='m'))
+            return (estimate_probs(resolved_circuit, params) for x in range(amount))
         else:
-            val = estimate_probs(self.circuit, params)
+            val = estimate_probs(resolved_circuit, params)
             return (val for x in range(amount)) # All same samples are generated
 
 

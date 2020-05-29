@@ -74,6 +74,7 @@ class QGAN(object):
             logging.info(f'Average diff between generator output and true distribution: {diff}')
             logging.info(f'Generator mean squared error post: {self.g.test(self.d)}')
 
+
     def train(self):
         generator_samples = []
         total_start_time = time()
@@ -82,22 +83,21 @@ class QGAN(object):
             it_start_time = time()
 
             self._train_discriminator()
-            self._train_generator()
-
-            generator_samples.append(next(self.g.gen_synthetics(1)))
-
+            if not (ts.dend and idx+1 == ts.repeats): #Not final round and discriminator ends
+                self._train_generator()
             it_end_time = time()
             logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
 
-        total_end_time = time()
-        logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
-
-        for idx, sample in enumerate(generator_samples):
+            # Code below generates intermediate figures
+            generator_samples.append(next(self.g.gen_synthetics(1)))
             plt.plot(next(get_real_samples(1)))
-            plt.plot(sample)
+            plt.plot(generator_samples[-1])
             plt.legend(['Data', f'gen({idx})'])
             plt.savefig(f'iter_{idx}.pdf')
             plt.clf()
+
+        total_end_time = time()
+        logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
 
         plt.plot(next(get_real_samples(1)))
         legend = ['Data']
@@ -172,6 +172,7 @@ Training:
     repeats {ts.repeats}
     printing accuracy {ts.print_accuracy} (more info during training for a small slowdown)
     showing figures is set to {ts.show_figs}
+    Last one to train is {"discriminator" if ts.dend else "generator"}
 ''')
 
 def main():

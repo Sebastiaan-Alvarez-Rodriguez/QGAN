@@ -45,10 +45,11 @@ class DataSettings(object):
 
 
 class TrainingSettings(object):
-    def __init__(self, repeats, print_accuracy, show_figs):
+    def __init__(self, repeats, print_accuracy, show_figs, dend):
         self.repeats = repeats
         self.print_accuracy = print_accuracy
         self.show_figs = show_figs
+        self.dend = dend
 
 
 def _init(args):
@@ -85,6 +86,8 @@ def _init(args):
         t_settings.print_accuracy = args.print_accuracy
     if args.show_figs:
         t_settings.show_figs = args.show_figs
+    if args.discriminator_end:
+        t_settings.dend = args.discriminator_end
 
     if args.log and args.print_accuracy and getattr(logging, args.log.upper()) > logging.INFO:
         raise ValueError('Accuracies are printed on INFO logging level. Set logging to info level or lower')
@@ -103,6 +106,8 @@ def settings_init():
     parser.add_argument('-l', '--log', type=str, choices=['debug', 'info', 'warning', 'error', 'critical'], help=f'Logging severity (Default "info")')
     parser.add_argument('-pa', '--print_accuracy', action='store_true', help=f'Print intermediate accuracies for generator and discriminator (slows down training a bit) (Default {print_accuracy})')
     parser.add_argument('-sf', '--show_figs', action='store_true', help=f'Show figures (should be off if you are running on a server environment) (Default {t_settings.show_figs})')
+    parser.add_argument('-dend', '--discriminator_end', action='store_true', help=f'Sets that discriminator instead of generator ends with final training round (Default {t_settings.dend})')
+    
     _init(parser.parse_args())
 
 g_num_qubits = 3
@@ -141,5 +146,6 @@ data_settings = DataSettings(mu, sigma, batch_size, synthetic_size, real_size, g
 repeats = 10
 print_accuracy = False
 show_figs = False
+dend = False
 global t_settings
-t_settings = TrainingSettings(repeats, print_accuracy, show_figs)
+t_settings = TrainingSettings(repeats, print_accuracy, show_figs, dend)
