@@ -64,11 +64,6 @@ def run_circuit(simulator, circuit, qubits, datapoint, params):
     if s.n_shots > 0:
         raise NotImplementedError('I cannot just prepare a state like that on hardware. Have to fix the quantum RAM problem for that')    
     else:
-        # Added to fill in parameters
-        param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
-        resolver = cirq.ParamResolver(dict(param_mapping))
-        resolved_circuit = cirq.resolve_parameters(circuit, resolver)
-
         # Added trick to convert datapoint to initial state
         '''
         a_x = sqrt(point(x)) (point -> 1 van entries )
@@ -82,7 +77,7 @@ def run_circuit(simulator, circuit, qubits, datapoint, params):
         '''
         init_state = np.array([np.sqrt(x) for x in datapoint])
 
-        results = simulator.simulate(resolved_circuit, initial_state=init_state)
+        results = simulator.simulate(circuit, initial_state=init_state)
         return abs(results.final_state[-1])
 
 
@@ -90,7 +85,10 @@ def run_circuit(simulator, circuit, qubits, datapoint, params):
 # Optimize
 ####################################
 def sweep_data(simulator, circuit, qubits, data, params):
-    return [run_circuit(simulator, circuit, qubits, dist, params) for dist in data]
+    # Added to fill in parameters
+    param_mapping = [(f'var_{x}', param) for x, param in enumerate(params)]
+    resolved_circuit = cirq.resolve_parameters(circuit, cirq.ParamResolver(dict(param_mapping)))
+    return [run_circuit(simulator, resolved_circuit, qubits, dist, params) for dist in data]
 
 
 def cost_to_optimize(simulator, circuit, qubits, data, labels, params):
