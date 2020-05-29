@@ -135,9 +135,11 @@ class Generator(object):
         if s.n_shots > 0:
             if params is None:
                 params = self.params
+
             return (estimate_probs(self.circuit, params) for x in range(amount))
         else:
-            raise NotImplementedError('All same samples would be generated')
+            val = estimate_probs(self.circuit, params)
+            return (val for x in range(amount)) # All same samples are generated
 
 
     def print_circuit(self, transpose=True):

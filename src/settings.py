@@ -110,7 +110,7 @@ g_depth = 2
 g_n_shots = 6000
 g_paramtype = InitParamType.RANDOM
 g_trainingtype = TrainingType.COBYLA
-g_max_iter = 20
+g_max_iter = 50
 g_step_rate = 0.1
 global g_settings
 g_settings = GeneratorSettings(g_num_qubits, g_depth, g_n_shots, g_paramtype, g_trainingtype, g_max_iter, g_step_rate)
@@ -121,7 +121,7 @@ d_depth = 5
 d_n_shots = 0
 d_paramtype = InitParamType.RANDOM
 d_trainingtype = TrainingType.COBYLA
-d_max_iter = 20
+d_max_iter = 50
 d_type = 2
 d_step_rate = 0.1
 global d_settings
@@ -131,9 +131,9 @@ d_settings = DiscriminatorSettings(d_num_qubits, d_depth, d_n_shots, d_paramtype
 mu = 1.0
 sigma = 1.0
 batch_size = 2000
-synthetic_size = 100
-real_size = 100
-gen_size = 100
+synthetic_size = 10
+real_size = 10
+gen_size = 20
 global data_settings
 data_settings = DataSettings(mu, sigma, batch_size, synthetic_size, real_size, gen_size)
 

@@ -4,6 +4,7 @@ import logging
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import mean_squared_error
 
 from src.enums.trainingtype import TrainingType
 from src.discriminator.type1 import Discriminator as Discriminator1
@@ -66,10 +67,15 @@ class QGAN(object):
         g_end_time = time()
         logging.info(f'Generator training completed in {round(g_end_time-g_start_time, 2)} seconds')
         if ts.print_accuracy:
+            diff = 0.0
+            for x in range(20):
+                diff += mean_squared_error(next(self.g.gen_synthetics(1)), next(get_real_samples(1)))
+            diff /= 20.0
+            logging.info(f'Average diff between generator output and true distribution: {diff}')
             logging.info(f'Generator mean squared error post: {self.g.test(self.d)}')
 
-
     def train(self):
+        generator_samples = []
         total_start_time = time()
         for idx, x in enumerate(range(ts.repeats)):
             logging.info(f'Starting training iteration {idx}')
@@ -78,11 +84,31 @@ class QGAN(object):
             self._train_discriminator()
             self._train_generator()
 
+            generator_samples.append(next(self.g.gen_synthetics(1)))
+
             it_end_time = time()
             logging.info(f'COMPLETED in {round(it_end_time-it_start_time, 2)} seconds')
-           
+
         total_end_time = time()
         logging.info(f'FINISHED in {round(total_end_time-total_start_time, 2)} seconds')
+
+        for idx, sample in enumerate(generator_samples):
+            plt.plot(next(get_real_samples(1)))
+            plt.plot(sample)
+            plt.legend(['Data', f'gen({idx})'])
+            plt.savefig(f'iter_{idx}.pdf')
+            plt.clf()
+
+        plt.plot(next(get_real_samples(1)))
+        legend = ['Data']
+        for idx, sample in enumerate(generator_samples):
+            plt.plot(sample)
+            legend.append(f'gen({idx})')
+        plt.legend(legend)
+        if ts.show_figs:
+            plt.show()
+        plt.savefig(f'iter_final.pdf')
+        plt.clf()
 
 
     def _test_generator(self):
@@ -98,7 +124,7 @@ class QGAN(object):
         if ts.show_figs:
             plt.show()
         plt.savefig('gen.pdf')
-
+        plt.clf()
 
     def _test_discriminator(self):
         dataset, labels = self.generate_dataset()

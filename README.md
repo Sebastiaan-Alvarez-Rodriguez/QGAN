@@ -25,7 +25,7 @@ to see all configurable parameters.
 To be able to run within reasonable time on a desktop (say 5 minutes),
 you may want to use
 ```bash
-python3 run.py -dis 1 -ds 10 -dr 10 -dg 10 -id 20 -ig 20 -pa -sf
+python3 run.py -dis 1 -ds 10 -dr 10 -pa -sf
 ```
 This sets:
  - discriminator type to 1, which trains faster

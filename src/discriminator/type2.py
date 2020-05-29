@@ -1,5 +1,5 @@
 import numpy as np 
-from sklearn.metrics import mean_squared_error, accuracy_score
+from sklearn.metrics import mean_squared_error
 from functools import partial
 from time import time
 from sympy import Symbol

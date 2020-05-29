@@ -27,7 +27,7 @@ def get_dist(data):
     return np.array([len(data[data==x])/len(data) for x in range(2**gs.num_qubits)])
 
 
-def get_real_samples(amount):
+def get_real_samples(amount):    
     return (get_dist(normal_pdf(s.batch_size)) for x in range(amount))
 
 
